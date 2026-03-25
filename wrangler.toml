@@ -1,0 +1,24 @@
+name = "release-authenticator"
+main = "src/index.ts"
+compatibility_date = "2026-03-25"
+
+[vars]
+# Expected audience for GitHub Actions OIDC token requests (optional).
+# Defaults to the Worker's own origin, which matches the action's default.
+# EXPECTED_AUDIENCE = "https://release-authenticator.<subdomain>.workers.dev"
+
+# Restrict exchange to a single ref (optional; default in code is refs/heads/main)
+ALLOWED_REF = "refs/heads/main"
+
+# Optional hard lock to one workflow file path in the same repository/ref.
+# The worker matches workflow_ref or job_workflow_ref against
+# "${repository}/${ALLOWED_WORKFLOW_PATH}@${ALLOWED_REF}".
+# e.g. ".github/workflows/release.yml"
+# ALLOWED_WORKFLOW_PATH = ""
+
+# Optional hard lock to one GitHub Actions environment.
+# e.g. "release"
+# ALLOWED_ENVIRONMENT = ""
+
+[observability]
+enabled = true

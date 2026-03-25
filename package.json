@@ -1,0 +1,21 @@
+{
+  "name": "release-authenticator-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --env-file .env.local",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@octokit/auth-app": "^8.1.2",
+    "jose": "^6.1.0",
+    "octokit": "^5.0.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.38.0"
+  }
+}
