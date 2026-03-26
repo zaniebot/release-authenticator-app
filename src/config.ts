@@ -12,6 +12,7 @@ export interface Env {
   ALLOWED_REF?: string;
   ALLOWED_WORKFLOW_PATH?: string;
   ALLOWED_ENVIRONMENT?: string;
+  JTI_REPLAY_GUARD?: DurableObjectNamespace;
 }
 
 export interface Config {
@@ -21,13 +22,20 @@ export interface Config {
   allowedRef: string;
   allowedWorkflowPath?: string;
   allowedEnvironment?: string;
+  jtiReplayGuard: DurableObjectNamespace;
 }
 
 const DEFAULT_ALLOWED_REF = "refs/heads/main";
 
 function getRequiredConfig(
   env: Env,
-): { appId: string; appPrivateKey: string } | AppError {
+):
+  | {
+      appId: string;
+      appPrivateKey: string;
+      jtiReplayGuard: DurableObjectNamespace;
+    }
+  | AppError {
   if (!env.APP_ID) {
     return appError(ErrorCode.AppIdNotConfigured);
   }
@@ -36,9 +44,14 @@ function getRequiredConfig(
     return appError(ErrorCode.AppPrivateKeyNotConfigured);
   }
 
+  if (!env.JTI_REPLAY_GUARD) {
+    return appError(ErrorCode.JtiReplayGuardNotConfigured);
+  }
+
   return {
     appId: env.APP_ID,
     appPrivateKey: env.APP_PRIVATE_KEY,
+    jtiReplayGuard: env.JTI_REPLAY_GUARD,
   };
 }
 

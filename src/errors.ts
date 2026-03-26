@@ -5,11 +5,16 @@ import { jsonError } from "./http";
 export enum ErrorCode {
   AppIdNotConfigured = "app_id_not_configured",
   AppPrivateKeyNotConfigured = "app_private_key_not_configured",
+  JtiReplayGuardNotConfigured = "jti_replay_guard_not_configured",
   MissingBearerToken = "missing_bearer_token",
   InvalidExpiresIn = "invalid_expires_in",
   OidcTokenExpired = "oidc_token_expired",
   InvalidOidcToken = "invalid_oidc_token",
   OidcVerificationUnavailable = "oidc_verification_unavailable",
+  OidcTokenMissingJti = "oidc_token_missing_jti",
+  OidcTokenMissingExp = "oidc_token_missing_exp",
+  OidcTokenReplayed = "oidc_token_replayed",
+  JtiReplayGuardUnavailable = "jti_replay_guard_unavailable",
   RefNotAllowed = "ref_not_allowed",
   EnvironmentNotAllowed = "environment_not_allowed",
   RepositoryClaimMissing = "repository_claim_missing",
@@ -44,6 +49,10 @@ const ERROR_DEFINITIONS: Record<ErrorCode, { status: number; message: string }> 
     status: 500,
     message: "APP_PRIVATE_KEY is not configured",
   },
+  [ErrorCode.JtiReplayGuardNotConfigured]: {
+    status: 500,
+    message: "JTI_REPLAY_GUARD is not configured",
+  },
   [ErrorCode.MissingBearerToken]: {
     status: 401,
     message: "missing bearer token",
@@ -63,6 +72,22 @@ const ERROR_DEFINITIONS: Record<ErrorCode, { status: number; message: string }> 
   [ErrorCode.OidcVerificationUnavailable]: {
     status: 503,
     message: "oidc verification unavailable",
+  },
+  [ErrorCode.OidcTokenMissingJti]: {
+    status: 401,
+    message: "oidc token missing jti",
+  },
+  [ErrorCode.OidcTokenMissingExp]: {
+    status: 401,
+    message: "oidc token missing exp",
+  },
+  [ErrorCode.OidcTokenReplayed]: {
+    status: 409,
+    message: "oidc token replayed",
+  },
+  [ErrorCode.JtiReplayGuardUnavailable]: {
+    status: 503,
+    message: "jti replay guard unavailable",
   },
   [ErrorCode.RefNotAllowed]: {
     status: 403,

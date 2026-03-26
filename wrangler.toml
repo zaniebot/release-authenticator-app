@@ -20,5 +20,13 @@ ALLOWED_REF = "refs/heads/main"
 # e.g. "release"
 # ALLOWED_ENVIRONMENT = ""
 
+[[durable_objects.bindings]]
+name = "JTI_REPLAY_GUARD"
+class_name = "JtiReplayGuard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["JtiReplayGuard"]
+
 [observability]
 enabled = true

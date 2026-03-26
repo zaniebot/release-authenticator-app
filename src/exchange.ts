@@ -18,6 +18,7 @@ import {
   type AppError,
 } from "./errors";
 import { json } from "./http";
+import { claimJti } from "./replay";
 
 interface GitHubActionsClaims extends JWTPayload {
   repository?: string;
@@ -37,6 +38,8 @@ interface VerifiedClaims {
     repo: string;
   };
   ref: string;
+  jti: string;
+  expiresAtMs: number;
 }
 
 interface ExchangeResponse {
@@ -49,6 +52,7 @@ interface ExchangeResponse {
 const ACTIONS_ISSUER = "https://token.actions.githubusercontent.com";
 const ACTIONS_JWKS_URL = new URL(`${ACTIONS_ISSUER}/.well-known/jwks`);
 const JWKS = createRemoteJWKSet(ACTIONS_JWKS_URL);
+const CLOCK_TOLERANCE_SECONDS = 5;
 const MIN_TOKEN_LIFETIME_MINUTES = 10;
 const MAX_TOKEN_LIFETIME_MINUTES = 60;
 
@@ -123,6 +127,8 @@ async function verifyOidcClaims(
     const verified = await jwtVerify<GitHubActionsClaims>(oidcToken, JWKS, {
       issuer: ACTIONS_ISSUER,
       audience: config.expectedAudience,
+      algorithms: ["RS256"],
+      clockTolerance: CLOCK_TOLERANCE_SECONDS,
     });
     payload = verified.payload;
   } catch (error) {
@@ -173,11 +179,23 @@ async function verifyOidcClaims(
     return appError(ErrorCode.RepositoryIdClaimInvalid);
   }
 
+  const jti = payload.jti;
+  if (typeof jti !== "string" || jti.length === 0) {
+    return appError(ErrorCode.OidcTokenMissingJti);
+  }
+
+  const exp = payload.exp;
+  if (typeof exp !== "number" || !Number.isInteger(exp) || exp <= 0) {
+    return appError(ErrorCode.OidcTokenMissingExp);
+  }
+
   return {
     repository,
     repositoryId,
     repoParts,
     ref: config.allowedRef,
+    jti,
+    expiresAtMs: exp * 1000 + CLOCK_TOLERANCE_SECONDS * 1000,
   };
 }
 
@@ -252,6 +270,14 @@ export async function exchangeToken(
 
   const claims = await verifyOidcClaims(request, config);
   if (isAppError(claims)) return toResponse(claims);
+
+  const replayError = await claimJti(
+    config,
+    ACTIONS_ISSUER,
+    claims.jti,
+    claims.expiresAtMs,
+  );
+  if (replayError) return toResponse(replayError);
 
   const response = await mintInstallationToken(config, claims, expiresIn);
   if (isAppError(response)) return toResponse(response);

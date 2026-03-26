@@ -2,6 +2,9 @@ import { validateConfig, type Env } from "./config";
 import { toResponse } from "./errors";
 import { exchangeToken } from "./exchange";
 import { json, jsonError } from "./http";
+import { JtiReplayGuard } from "./replay";
+
+export { JtiReplayGuard };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

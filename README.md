@@ -7,11 +7,13 @@ GitHub App installation token.
 
 - Verifies the OIDC JWT against GitHub's JWKS
 - Requires `iss = https://token.actions.githubusercontent.com`
+- Accepts only `RS256` and allows a small clock skew tolerance
 - Requires `aud` matches the worker's own origin (or `EXPECTED_AUDIENCE` if set)
 - Requires `ref = ALLOWED_REF` (defaults to `refs/heads/main`)
 - Rejects pull request tokens, including `pull_request_target`
 - Optionally requires a workflow file lock via `workflow_ref` / `job_workflow_ref`
 - Optionally requires `environment = ALLOWED_ENVIRONMENT`
+- Requires `jti` and rejects replayed OIDC tokens via a Durable Object-backed replay guard
 - Looks up the installation for the repository named in the OIDC claims
 - Mints an installation token scoped to that same `repository_id`
 - Grants `contents: write`
@@ -81,6 +83,9 @@ npm install
 npm run check
 npm run deploy
 ```
+
+The included `wrangler.toml` migration creates the `JtiReplayGuard` Durable Object used for
+single-use OIDC `jti` enforcement.
 
 ## Workflow usage
 
