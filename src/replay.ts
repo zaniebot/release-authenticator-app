@@ -78,14 +78,16 @@ export class JtiReplayGuard extends DurableObject {
       return jsonError(400, "invalid_expires_at", "invalid expiresAtMs");
     }
 
-    const existing = await this.ctx.storage.get<number>(STORAGE_KEY);
-    if (typeof existing === "number" && existing > Date.now()) {
-      return new Response(null, { status: 409 });
-    }
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const existing = await this.ctx.storage.get<number>(STORAGE_KEY);
+      if (typeof existing === "number" && existing > Date.now()) {
+        return new Response(null, { status: 409 });
+      }
 
-    await this.ctx.storage.put(STORAGE_KEY, expiresAtMs);
-    await this.ctx.storage.setAlarm(expiresAtMs);
-    return new Response(null, { status: 204 });
+      await this.ctx.storage.put(STORAGE_KEY, expiresAtMs);
+      await this.ctx.storage.setAlarm(expiresAtMs);
+      return new Response(null, { status: 204 });
+    });
   }
 
   async alarm(): Promise<void> {
