@@ -1,17 +1,31 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import type { DeploymentProtectionConfig } from "./config";
+import { isAppError } from "./errors";
 import {
   evaluateReleaseProtection,
+  parseRequestedDeploymentProtection,
   parseRunIdFromDeploymentCallbackUrl,
   type WorkflowJobSummary,
 } from "./deployment-protection";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const deploymentProtectionFixture = JSON.parse(
+  readFileSync(
+    join(__dirname, "..", "testdata", "deployment-protection-requested.json"),
+    "utf8",
+  ),
+);
 
 const config: DeploymentProtectionConfig = {
   appId: "123",
   appPrivateKey: "private-key",
   githubWebhookSecret: "secret",
+  allowedRef: "refs/heads/main",
   releaseEnvironmentName: "release",
   releaseGateJobName: "release-gate",
   releaseWorkflowPath: ".github/workflows/release.yml",
@@ -25,6 +39,24 @@ test("parseRunIdFromDeploymentCallbackUrl extracts the workflow run id", () => {
   assert.equal(runId, 23624826112);
 });
 
+test("parseRequestedDeploymentProtection accepts a real requested webhook payload shape", () => {
+  const requested = parseRequestedDeploymentProtection(
+    deploymentProtectionFixture,
+  );
+
+  assert.equal(isAppError(requested), false);
+  if (isAppError(requested)) {
+    throw requested;
+  }
+
+  assert.equal(requested.environment, "release");
+  assert.equal(requested.ref, "refs/heads/main");
+  assert.equal(requested.repository, "zaniebot/release-authenticator-example");
+  assert.equal(requested.owner, "zaniebot");
+  assert.equal(requested.repo, "release-authenticator-example");
+  assert.equal(requested.runId, 23625057533);
+});
+
 test("evaluateReleaseProtection approves a run after the gate job succeeds", () => {
   const jobs: WorkflowJobSummary[] = [
     { name: "release-gate", conclusion: "success" },
@@ -32,6 +64,7 @@ test("evaluateReleaseProtection approves a run after the gate job succeeds", () 
   ];
 
   const decision = evaluateReleaseProtection(
+    { environment: "release", ref: "refs/heads/main" },
     { path: ".github/workflows/release.yml" },
     jobs,
     config,
@@ -43,6 +76,7 @@ test("evaluateReleaseProtection approves a run after the gate job succeeds", () 
 
 test("evaluateReleaseProtection rejects a run with the wrong workflow path", () => {
   const decision = evaluateReleaseProtection(
+    { environment: "release", ref: "refs/heads/main" },
     { path: ".github/workflows/ci.yml" },
     [{ name: "release-gate", conclusion: "success" }],
     config,
@@ -54,6 +88,7 @@ test("evaluateReleaseProtection rejects a run with the wrong workflow path", () 
 
 test("evaluateReleaseProtection rejects a run when the gate job is missing", () => {
   const decision = evaluateReleaseProtection(
+    { environment: "release", ref: "refs/heads/main" },
     { path: ".github/workflows/release.yml" },
     [{ name: "publish", conclusion: "success" }],
     config,
@@ -65,6 +100,7 @@ test("evaluateReleaseProtection rejects a run when the gate job is missing", () 
 
 test("evaluateReleaseProtection rejects a run when the gate job did not succeed", () => {
   const decision = evaluateReleaseProtection(
+    { environment: "release", ref: "refs/heads/main" },
     { path: ".github/workflows/release.yml" },
     [{ name: "release-gate", conclusion: "failure" }],
     config,
@@ -72,4 +108,28 @@ test("evaluateReleaseProtection rejects a run when the gate job did not succeed"
 
   assert.equal(decision.state, "rejected");
   assert.equal(decision.comment, "release-gate concluded with failure");
+});
+
+test("evaluateReleaseProtection rejects a run for the wrong environment", () => {
+  const decision = evaluateReleaseProtection(
+    { environment: "staging", ref: "refs/heads/main" },
+    { path: ".github/workflows/release.yml" },
+    [{ name: "release-gate", conclusion: "success" }],
+    config,
+  );
+
+  assert.equal(decision.state, "rejected");
+  assert.equal(decision.comment, "environment staging is not allowed");
+});
+
+test("evaluateReleaseProtection rejects a run for the wrong ref", () => {
+  const decision = evaluateReleaseProtection(
+    { environment: "release", ref: "refs/tags/v1.2.3" },
+    { path: ".github/workflows/release.yml" },
+    [{ name: "release-gate", conclusion: "success" }],
+    config,
+  );
+
+  assert.equal(decision.state, "rejected");
+  assert.equal(decision.comment, "ref refs/tags/v1.2.3 is not allowed");
 });

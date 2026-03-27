@@ -34,6 +34,7 @@ export interface Config extends AppCredentials {
 
 export interface DeploymentProtectionConfig extends AppCredentials {
   githubWebhookSecret: string;
+  allowedRef: string;
   releaseEnvironmentName: string;
   releaseGateJobName: string;
   releaseWorkflowPath?: string;
@@ -137,6 +138,7 @@ export function getDeploymentProtectionConfig(
   return {
     ...credentials,
     githubWebhookSecret: env.GITHUB_WEBHOOK_SECRET,
+    allowedRef: env.ALLOWED_REF ?? DEFAULT_ALLOWED_REF,
     releaseEnvironmentName:
       env.RELEASE_ENVIRONMENT_NAME ?? DEFAULT_RELEASE_ENVIRONMENT_NAME,
     releaseGateJobName: env.RELEASE_GATE_JOB_NAME ?? DEFAULT_RELEASE_GATE_JOB_NAME,

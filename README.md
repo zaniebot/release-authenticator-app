@@ -36,9 +36,11 @@ It currently supports two GitHub App-backed flows:
 - Mints an installation token scoped to the triggering repository with:
   - `actions: read`
   - `deployments: write`
+- Requires `ref = ALLOWED_REF` (defaults to `refs/heads/main`)
 - Fetches the workflow run and its jobs
 - Requires the run to come from `.github/workflows/release.yml` by default
 - Requires a job named `release-gate` to have concluded with `success`
+- Rejects the deployment protection rule if policy evaluation fails after the request can be identified
 - Approves the deployment protection rule only after that gate passes
 
 The GitHub App private key lives only in Cloudflare Worker secrets.

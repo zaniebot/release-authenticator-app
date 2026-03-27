@@ -23,6 +23,7 @@ import { json } from "./http";
 interface DeploymentProtectionRulePayload {
   action?: string;
   environment?: string;
+  ref?: string;
   deployment_callback_url?: string;
   installation?: {
     id?: number;
@@ -42,6 +43,7 @@ interface DeploymentProtectionRulePayload {
 
 interface RequestedDeploymentProtection {
   environment: string;
+  ref?: string;
   installationId: number;
   owner: string;
   repo: string;
@@ -152,6 +154,7 @@ function summarizeDeploymentProtectionPayload(payload: unknown): unknown {
     topLevelKeys: Object.keys(record),
     action: record.action,
     environment: record.environment,
+    ref: record.ref,
     repository: repository
       ? {
           keys: Object.keys(repository),
@@ -183,7 +186,7 @@ function summarizeDeploymentProtectionPayload(payload: unknown): unknown {
   };
 }
 
-function parseRequestedDeploymentProtection(
+export function parseRequestedDeploymentProtection(
   payload: unknown,
 ): RequestedDeploymentProtection | AppError {
   if (typeof payload !== "object" || payload === null) {
@@ -234,45 +237,65 @@ function parseRequestedDeploymentProtection(
 
   return {
     environment: requestedPayload.environment,
+    ref: typeof requestedPayload.ref === "string" ? requestedPayload.ref : undefined,
     installationId,
     ...repository,
     runId,
   };
 }
 
+function rejectedDecision(comment: string): ReleaseProtectionDecision {
+  return {
+    state: "rejected",
+    comment,
+  };
+}
+
 export function evaluateReleaseProtection(
+  requested: Pick<RequestedDeploymentProtection, "environment" | "ref">,
   workflowRun: WorkflowRunSummary,
   jobs: WorkflowJobSummary[],
   config: Pick<
     DeploymentProtectionConfig,
-    "releaseGateJobName" | "releaseWorkflowPath"
+    | "allowedRef"
+    | "releaseEnvironmentName"
+    | "releaseGateJobName"
+    | "releaseWorkflowPath"
   >,
 ): ReleaseProtectionDecision {
+  if (requested.environment !== config.releaseEnvironmentName) {
+    return rejectedDecision(
+      `environment ${requested.environment} is not allowed`,
+    );
+  }
+
+  if (requested.ref !== config.allowedRef) {
+    return rejectedDecision(
+      `ref ${requested.ref ?? "<missing>"} is not allowed`,
+    );
+  }
   if (
     config.releaseWorkflowPath &&
     workflowRun.path !== config.releaseWorkflowPath
   ) {
-    return {
-      state: "rejected",
-      comment: `workflow path ${workflowRun.path ?? "<missing>"} is not allowed`,
-    };
+    return rejectedDecision(
+      `workflow path ${workflowRun.path ?? "<missing>"} is not allowed`,
+    );
   }
 
   const releaseGateJob = jobs.find(
     (job) => job.name === config.releaseGateJobName,
   );
   if (!releaseGateJob) {
-    return {
-      state: "rejected",
-      comment: `workflow run is missing ${config.releaseGateJobName}`,
-    };
+    return rejectedDecision(
+      `workflow run is missing ${config.releaseGateJobName}`,
+    );
   }
 
   if (releaseGateJob.conclusion !== "success") {
-    return {
-      state: "rejected",
-      comment: `${config.releaseGateJobName} concluded with ${releaseGateJob.conclusion ?? "no conclusion"}`,
-    };
+    return rejectedDecision(
+      `${config.releaseGateJobName} concluded with ${releaseGateJob.conclusion ?? "no conclusion"}`,
+    );
   }
 
   return {
@@ -455,23 +478,23 @@ export async function handleGitHubWebhook(
   const octokit = new Octokit({ auth: installationToken });
 
   let decision: ReleaseProtectionDecision;
-  if (requested.environment !== config.releaseEnvironmentName) {
-    decision = {
-      state: "rejected",
-      comment: `environment ${requested.environment} is not allowed`,
-    };
+  if (
+    requested.environment !== config.releaseEnvironmentName ||
+    requested.ref !== config.allowedRef
+  ) {
+    decision = evaluateReleaseProtection(requested, { path: null }, [], config);
   } else {
     const workflowRun = await fetchWorkflowRun(octokit, requested);
     if (isAppError(workflowRun)) {
-      return toResponse(workflowRun);
+      decision = rejectedDecision(workflowRun.message);
+    } else {
+      const jobs = await fetchWorkflowJobs(octokit, requested);
+      if (isAppError(jobs)) {
+        decision = rejectedDecision(jobs.message);
+      } else {
+        decision = evaluateReleaseProtection(requested, workflowRun, jobs, config);
+      }
     }
-
-    const jobs = await fetchWorkflowJobs(octokit, requested);
-    if (isAppError(jobs)) {
-      return toResponse(jobs);
-    }
-
-    decision = evaluateReleaseProtection(workflowRun, jobs, config);
   }
 
   const reviewError = await reviewDeploymentProtectionRule(
