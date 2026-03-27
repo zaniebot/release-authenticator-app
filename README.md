@@ -1,9 +1,20 @@
 # release-authenticator-app
 
-Cloudflare Worker that verifies a GitHub Actions OIDC token and exchanges it for a short-lived
-GitHub App installation token.
+Cloudflare Worker for Astral release automation.
+
+It currently supports two GitHub App-backed flows:
+
+1. **OIDC exchange** at `POST /exchange`
+   - verifies a GitHub Actions OIDC token
+   - mints a short-lived GitHub App installation token scoped to the calling repository
+2. **Custom deployment protection rule approvals** at `POST /github/webhook`
+   - validates GitHub App webhook deliveries
+   - checks that the current workflow run already passed a human-approved `release-gate` job
+   - approves or rejects the protected `release` environment for that run
 
 ## Security model
+
+### OIDC exchange
 
 - Verifies the OIDC JWT against GitHub's JWKS
 - Requires `iss = https://token.actions.githubusercontent.com`
@@ -18,14 +29,29 @@ GitHub App installation token.
 - Mints an installation token scoped to that same `repository_id`
 - Grants `contents: write`
 
+### Deployment protection approvals
+
+- Validates GitHub App webhook deliveries with `X-Hub-Signature-256`
+- Handles `deployment_protection_rule` requests from the `release` environment
+- Mints an installation token scoped to the triggering repository with:
+  - `actions: read`
+  - `deployments: write`
+- Fetches the workflow run and its jobs
+- Requires the run to come from `.github/workflows/release.yml` by default
+- Requires a job named `release-gate` to have concluded with `success`
+- Approves the deployment protection rule only after that gate passes
+
 The GitHub App private key lives only in Cloudflare Worker secrets.
 
 ## Setup
 
 ### Secrets
 
+Set these as Cloudflare Worker secrets:
+
 - `APP_ID`: The GitHub App id (or client application id)
 - `APP_PRIVATE_KEY`: PKCS#8 encoded private key for the GitHub App
+- `GITHUB_WEBHOOK_SECRET`: The GitHub App webhook secret used for `POST /github/webhook`
 
 > **Private key format**: The Cloudflare Workers runtime requires PKCS#8 keys
 > (`BEGIN PRIVATE KEY`), but GitHub's App settings page downloads PKCS#1
@@ -45,6 +71,8 @@ The GitHub App private key lives only in Cloudflare Worker secrets.
 ### Configuration
 
 Set these in `wrangler.toml`:
+
+#### OIDC exchange
 
 - `EXPECTED_AUDIENCE` (optional) — the OIDC `aud` claim the worker requires. Defaults to the
   worker's own origin (e.g. `https://release-authenticator.<subdomain>.workers.dev`), which matches
@@ -67,6 +95,34 @@ ALLOWED_ENVIRONMENT = "release"
 
 That exact value is compared against `workflow_ref` for direct workflows and `job_workflow_ref` for reusable workflows.
 
+#### Deployment protection approvals
+
+These defaults match `uv`'s release workflow:
+
+```toml
+RELEASE_ENVIRONMENT_NAME = "release"
+RELEASE_GATE_JOB_NAME = "release-gate"
+RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml"
+```
+
+- `RELEASE_ENVIRONMENT_NAME` — protected environment that the app will review
+- `RELEASE_GATE_JOB_NAME` — job that must already be `success`
+- `RELEASE_WORKFLOW_PATH` — workflow file path the run must come from; set it to `""` to disable this lock
+
+## GitHub App permissions
+
+Configure the GitHub App with:
+
+- **Actions**: Read-only
+- **Contents**: Read and write
+- **Deployments**: Read and write
+- **Metadata**: Read-only
+
+For deployment protection approvals, subscribe the App webhook to:
+
+- `deployment_protection_rule`
+- `ping`
+
 ## Deploy
 
 Set these environment variables for deployment, or add them to `.env.local`:
@@ -81,6 +137,7 @@ Then:
 ```bash
 npm install
 npm run check
+npm test
 npm run deploy
 ```
 
@@ -88,6 +145,8 @@ The included `wrangler.toml` migration creates the `JtiReplayGuard` Durable Obje
 single-use OIDC `jti` enforcement.
 
 ## Workflow usage
+
+### OIDC exchange
 
 ```yaml
 permissions:
@@ -108,12 +167,31 @@ steps:
     run: gh release create "v${{ inputs.version }}" --generate-notes
 ```
 
-## App permissions
+### Release gate + protected environment
 
-Configure the GitHub App with:
+For the `uv` release workflow, the intended pattern is:
 
-- **Contents**: Read and write
-- **Metadata**: Read-only
+1. Add a single `release-gate` job that targets a `release-gate` environment with human reviewers
+2. Keep all real release secrets in the `release` environment
+3. Configure `release` to use this GitHub App as a custom deployment protection rule
+4. Make the release jobs depend on `release-gate`
+5. Keep `deployment: false` only for CI-only `release-test` jobs, not real release jobs
+
+Example gate job:
+
+```yaml
+release-gate:
+  name: release-gate
+  needs:
+    - plan
+  if: ${{ needs.plan.outputs.publishing == 'true' }}
+  runs-on: ubuntu-latest
+  environment:
+    name: release-gate
+    deployment: false
+  steps:
+    - run: echo "Release approved"
+```
 
 ## Tag protection
 
@@ -159,8 +237,10 @@ You can configure this in the repository settings under **Rules → Rulesets**, 
 
 ## Endpoints
 
-- `GET /health` — returns 200 only when required worker config is present
+- `GET /health` — returns 200 only when the OIDC exchange config is present
+- `GET /health/deployment-protection` — returns 200 only when deployment protection config is present
 - `POST /exchange`
+- `POST /github/webhook`
 
 `POST /exchange` expects:
 
@@ -174,5 +254,23 @@ It returns:
   "expires_at": "2026-03-25T16:00:00Z",
   "repository": "owner/repo",
   "ref": "refs/heads/main"
+}
+```
+
+`POST /github/webhook` expects a GitHub App webhook delivery with:
+
+- `X-GitHub-Event: deployment_protection_rule`
+- `X-Hub-Signature-256: sha256=...`
+
+It approves or rejects the deployment protection rule and returns:
+
+```json
+{
+  "ok": true,
+  "repository": "astral-sh/uv",
+  "run_id": 123456789,
+  "environment": "release",
+  "state": "approved",
+  "comment": "release-gate passed"
 }
 ```

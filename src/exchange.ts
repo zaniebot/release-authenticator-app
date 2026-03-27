@@ -1,10 +1,8 @@
-import { createAppAuth } from "@octokit/auth-app";
 import {
   jwtVerify,
   createRemoteJWKSet,
   type JWTPayload,
 } from "jose";
-import { Octokit } from "octokit";
 
 import { getConfig, type Config, type Env } from "./config";
 import {
@@ -17,6 +15,7 @@ import {
   toResponse,
   type AppError,
 } from "./errors";
+import { createGitHubAppClient } from "./github";
 import { json } from "./http";
 import { claimJti } from "./replay";
 
@@ -105,12 +104,6 @@ function parseExpiresIn(value: string | null): number | null | AppError {
 
 function expiresAtFromMinutes(minutes: number): string {
   return new Date(Date.now() + minutes * 60_000).toISOString();
-}
-
-function normalizePrivateKey(privateKey: string): string {
-  return privateKey.includes("\\n")
-    ? privateKey.replace(/\\n/g, "\n")
-    : privateKey;
 }
 
 async function verifyOidcClaims(
@@ -205,13 +198,7 @@ async function mintInstallationToken(
   expiresInMinutes: number | null,
 ): Promise<ExchangeResponse | AppError> {
   try {
-    const octokit = new Octokit({
-      authStrategy: createAppAuth,
-      auth: {
-        appId: config.appId,
-        privateKey: normalizePrivateKey(config.appPrivateKey),
-      },
-    });
+    const octokit = createGitHubAppClient(config.appId, config.appPrivateKey);
 
     let installationId: number;
     try {

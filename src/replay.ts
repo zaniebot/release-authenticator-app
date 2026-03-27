@@ -35,13 +35,15 @@ export async function claimJti(
 ): Promise<AppError | null> {
   try {
     const key = await hashReplayKey(issuer, jti);
-    const response = await config.jtiReplayGuard.getByName(key).fetch(CLAIM_PATH, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ expiresAtMs }),
-    });
+    const response = await config.jtiReplayGuard
+      .getByName(key)
+      .fetch(CLAIM_PATH, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ expiresAtMs }),
+      });
 
     if (response.status === 204) {
       return null;

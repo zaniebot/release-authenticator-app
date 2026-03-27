@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --env-file .env.local",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@octokit/auth-app": "^8.1.2",
@@ -15,6 +16,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "wrangler": "^4.38.0"
   }

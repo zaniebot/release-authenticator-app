@@ -20,6 +20,12 @@ ALLOWED_REF = "refs/heads/main"
 # e.g. "release"
 # ALLOWED_ENVIRONMENT = ""
 
+# Custom deployment protection defaults. The webhook secret itself must be set
+# with `wrangler secret put GITHUB_WEBHOOK_SECRET`.
+RELEASE_ENVIRONMENT_NAME = "release"
+RELEASE_GATE_JOB_NAME = "release-gate"
+RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml"
+
 [[durable_objects.bindings]]
 name = "JTI_REPLAY_GUARD"
 class_name = "JtiReplayGuard"

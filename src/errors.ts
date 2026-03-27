@@ -6,6 +6,7 @@ export enum ErrorCode {
   AppIdNotConfigured = "app_id_not_configured",
   AppPrivateKeyNotConfigured = "app_private_key_not_configured",
   JtiReplayGuardNotConfigured = "jti_replay_guard_not_configured",
+  GithubWebhookSecretNotConfigured = "github_webhook_secret_not_configured",
   MissingBearerToken = "missing_bearer_token",
   InvalidExpiresIn = "invalid_expires_in",
   OidcTokenExpired = "oidc_token_expired",
@@ -22,6 +23,8 @@ export enum ErrorCode {
   PullRequestEventNotAllowed = "pull_request_event_not_allowed",
   WorkflowNotAllowed = "workflow_not_allowed",
   RepositoryIdClaimInvalid = "repository_id_claim_invalid",
+  InvalidGithubWebhookSignature = "invalid_github_webhook_signature",
+  DeploymentProtectionPayloadInvalid = "deployment_protection_payload_invalid",
   GithubAppAuthInvalid = "github_app_auth_invalid",
   GithubInstallationLookupForbidden = "github_installation_lookup_forbidden",
   AppNotInstalled = "app_not_installed",
@@ -30,6 +33,9 @@ export enum ErrorCode {
   InstallationNotFound = "installation_not_found",
   InstallationTokenRequestInvalid = "installation_token_request_invalid",
   GithubAccessTokenRequestFailed = "github_access_token_request_failed",
+  WorkflowRunLookupFailed = "workflow_run_lookup_failed",
+  WorkflowJobsLookupFailed = "workflow_jobs_lookup_failed",
+  DeploymentProtectionReviewFailed = "deployment_protection_review_failed",
   TokenExchangeFailed = "token_exchange_failed",
 }
 
@@ -52,6 +58,10 @@ const ERROR_DEFINITIONS: Record<ErrorCode, { status: number; message: string }> 
   [ErrorCode.JtiReplayGuardNotConfigured]: {
     status: 500,
     message: "JTI_REPLAY_GUARD is not configured",
+  },
+  [ErrorCode.GithubWebhookSecretNotConfigured]: {
+    status: 500,
+    message: "GITHUB_WEBHOOK_SECRET is not configured",
   },
   [ErrorCode.MissingBearerToken]: {
     status: 401,
@@ -117,6 +127,14 @@ const ERROR_DEFINITIONS: Record<ErrorCode, { status: number; message: string }> 
     status: 403,
     message: "repository_id claim missing or invalid",
   },
+  [ErrorCode.InvalidGithubWebhookSignature]: {
+    status: 401,
+    message: "invalid GitHub webhook signature",
+  },
+  [ErrorCode.DeploymentProtectionPayloadInvalid]: {
+    status: 400,
+    message: "deployment protection payload is invalid",
+  },
   [ErrorCode.GithubAppAuthInvalid]: {
     status: 424,
     message: "github app authentication failed",
@@ -148,6 +166,18 @@ const ERROR_DEFINITIONS: Record<ErrorCode, { status: number; message: string }> 
   [ErrorCode.GithubAccessTokenRequestFailed]: {
     status: 502,
     message: "github access token request failed",
+  },
+  [ErrorCode.WorkflowRunLookupFailed]: {
+    status: 502,
+    message: "github workflow run lookup failed",
+  },
+  [ErrorCode.WorkflowJobsLookupFailed]: {
+    status: 502,
+    message: "github workflow jobs lookup failed",
+  },
+  [ErrorCode.DeploymentProtectionReviewFailed]: {
+    status: 502,
+    message: "github deployment protection review failed",
   },
   [ErrorCode.TokenExchangeFailed]: {
     status: 500,
@@ -242,4 +272,19 @@ export function mapAccessTokenRequestError(error: unknown): AppError {
       console.error("access token request failed", error);
       return appError(ErrorCode.GithubAccessTokenRequestFailed);
   }
+}
+
+export function mapWorkflowRunLookupError(error: unknown): AppError {
+  console.error("workflow run lookup failed", error);
+  return appError(ErrorCode.WorkflowRunLookupFailed);
+}
+
+export function mapWorkflowJobsLookupError(error: unknown): AppError {
+  console.error("workflow jobs lookup failed", error);
+  return appError(ErrorCode.WorkflowJobsLookupFailed);
+}
+
+export function mapDeploymentProtectionReviewError(error: unknown): AppError {
+  console.error("deployment protection review failed", error);
+  return appError(ErrorCode.DeploymentProtectionReviewFailed);
 }
