@@ -9,7 +9,7 @@
   },
   "pull_requests": [],
   "sha": "47efb7196c2a1a2fd3f52f2c59f0e2dd3d0e4d54",
-  "ref": "refs/heads/main",
+  "ref": "main",
   "repository": {
     "id": 1192056896,
     "name": "release-authenticator-example",

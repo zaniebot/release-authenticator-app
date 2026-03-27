@@ -90,6 +90,24 @@ export function parseRunIdFromDeploymentCallbackUrl(
   return Number.isSafeInteger(runId) && runId > 0 ? runId : null;
 }
 
+function normalizeRef(ref: string): string {
+  return ref.replace(/^refs\/heads\//, "").replace(/^refs\/tags\//, "");
+}
+
+export function refMatchesAllowedRef(
+  ref: string | undefined,
+  allowedRef: string,
+): boolean {
+  if (!ref) {
+    return false;
+  }
+
+  return (
+    ref === allowedRef ||
+    normalizeRef(ref) === normalizeRef(allowedRef)
+  );
+}
+
 function parseRepositoryCoordinates(
   repository: DeploymentProtectionRulePayload["repository"],
 ): { owner: string; repo: string; repository: string; repositoryId: number } | null {
@@ -269,7 +287,7 @@ export function evaluateReleaseProtection(
     );
   }
 
-  if (requested.ref !== config.allowedRef) {
+  if (!refMatchesAllowedRef(requested.ref, config.allowedRef)) {
     return rejectedDecision(
       `ref ${requested.ref ?? "<missing>"} is not allowed`,
     );
@@ -480,7 +498,7 @@ export async function handleGitHubWebhook(
   let decision: ReleaseProtectionDecision;
   if (
     requested.environment !== config.releaseEnvironmentName ||
-    requested.ref !== config.allowedRef
+    !refMatchesAllowedRef(requested.ref, config.allowedRef)
   ) {
     decision = evaluateReleaseProtection(requested, { path: null }, [], config);
   } else {

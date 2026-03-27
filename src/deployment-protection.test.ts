@@ -10,6 +10,7 @@ import {
   evaluateReleaseProtection,
   parseRequestedDeploymentProtection,
   parseRunIdFromDeploymentCallbackUrl,
+  refMatchesAllowedRef,
   type WorkflowJobSummary,
 } from "./deployment-protection";
 
@@ -50,11 +51,19 @@ test("parseRequestedDeploymentProtection accepts a real requested webhook payloa
   }
 
   assert.equal(requested.environment, "release");
-  assert.equal(requested.ref, "refs/heads/main");
+  assert.equal(requested.ref, "main");
   assert.equal(requested.repository, "zaniebot/release-authenticator-example");
   assert.equal(requested.owner, "zaniebot");
   assert.equal(requested.repo, "release-authenticator-example");
   assert.equal(requested.runId, 23625057533);
+});
+
+test("refMatchesAllowedRef accepts full and short branch refs", () => {
+  assert.equal(refMatchesAllowedRef("main", "refs/heads/main"), true);
+  assert.equal(refMatchesAllowedRef("refs/heads/main", "refs/heads/main"), true);
+  assert.equal(refMatchesAllowedRef("v1.2.3", "refs/tags/v1.2.3"), true);
+  assert.equal(refMatchesAllowedRef("refs/tags/v1.2.3", "refs/tags/v1.2.3"), true);
+  assert.equal(refMatchesAllowedRef("develop", "refs/heads/main"), false);
 });
 
 test("evaluateReleaseProtection approves a run after the gate job succeeds", () => {
@@ -64,7 +73,7 @@ test("evaluateReleaseProtection approves a run after the gate job succeeds", () 
   ];
 
   const decision = evaluateReleaseProtection(
-    { environment: "release", ref: "refs/heads/main" },
+    { environment: "release", ref: "main" },
     { path: ".github/workflows/release.yml" },
     jobs,
     config,
@@ -76,7 +85,7 @@ test("evaluateReleaseProtection approves a run after the gate job succeeds", () 
 
 test("evaluateReleaseProtection rejects a run with the wrong workflow path", () => {
   const decision = evaluateReleaseProtection(
-    { environment: "release", ref: "refs/heads/main" },
+    { environment: "release", ref: "main" },
     { path: ".github/workflows/ci.yml" },
     [{ name: "release-gate", conclusion: "success" }],
     config,
@@ -88,7 +97,7 @@ test("evaluateReleaseProtection rejects a run with the wrong workflow path", () 
 
 test("evaluateReleaseProtection rejects a run when the gate job is missing", () => {
   const decision = evaluateReleaseProtection(
-    { environment: "release", ref: "refs/heads/main" },
+    { environment: "release", ref: "main" },
     { path: ".github/workflows/release.yml" },
     [{ name: "publish", conclusion: "success" }],
     config,
@@ -100,7 +109,7 @@ test("evaluateReleaseProtection rejects a run when the gate job is missing", () 
 
 test("evaluateReleaseProtection rejects a run when the gate job did not succeed", () => {
   const decision = evaluateReleaseProtection(
-    { environment: "release", ref: "refs/heads/main" },
+    { environment: "release", ref: "main" },
     { path: ".github/workflows/release.yml" },
     [{ name: "release-gate", conclusion: "failure" }],
     config,
@@ -112,7 +121,7 @@ test("evaluateReleaseProtection rejects a run when the gate job did not succeed"
 
 test("evaluateReleaseProtection rejects a run for the wrong environment", () => {
   const decision = evaluateReleaseProtection(
-    { environment: "staging", ref: "refs/heads/main" },
+    { environment: "staging", ref: "main" },
     { path: ".github/workflows/release.yml" },
     [{ name: "release-gate", conclusion: "success" }],
     config,
