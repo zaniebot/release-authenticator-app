@@ -23,6 +23,7 @@ import { json } from "./http";
 interface DeploymentProtectionRulePayload {
   action?: string;
   environment?: string;
+  deployment_callback_url?: string;
   installation?: {
     id?: number;
   };
@@ -73,6 +74,20 @@ function parsePositiveInteger(value: unknown): number | null {
     : null;
 }
 
+export function parseRunIdFromDeploymentCallbackUrl(
+  deploymentCallbackUrl: string,
+): number | null {
+  const match = deploymentCallbackUrl.match(
+    /\/actions\/runs\/(\d+)\/deployment_protection_rule$/,
+  );
+  if (!match) {
+    return null;
+  }
+
+  const runId = Number(match[1]);
+  return Number.isSafeInteger(runId) && runId > 0 ? runId : null;
+}
+
 function parseRepositoryCoordinates(
   repository: DeploymentProtectionRulePayload["repository"],
 ): { owner: string; repo: string; repository: string; repositoryId: number } | null {
@@ -107,6 +122,64 @@ function parseRepositoryCoordinates(
     repo: parsedRepo,
     repository: fullName,
     repositoryId,
+  };
+}
+
+function summarizeDeploymentProtectionPayload(payload: unknown): unknown {
+  if (typeof payload !== "object" || payload === null) {
+    return payload;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const repository =
+    typeof record.repository === "object" && record.repository !== null
+      ? (record.repository as Record<string, unknown>)
+      : null;
+  const installation =
+    typeof record.installation === "object" && record.installation !== null
+      ? (record.installation as Record<string, unknown>)
+      : null;
+  const workflowRun =
+    typeof record.workflow_run === "object" && record.workflow_run !== null
+      ? (record.workflow_run as Record<string, unknown>)
+      : null;
+  const deployment =
+    typeof record.deployment === "object" && record.deployment !== null
+      ? (record.deployment as Record<string, unknown>)
+      : null;
+
+  return {
+    topLevelKeys: Object.keys(record),
+    action: record.action,
+    environment: record.environment,
+    repository: repository
+      ? {
+          keys: Object.keys(repository),
+          id: repository.id,
+          name: repository.name,
+          full_name: repository.full_name,
+          owner: repository.owner,
+        }
+      : null,
+    installation: installation
+      ? {
+          keys: Object.keys(installation),
+          id: installation.id,
+        }
+      : null,
+    deployment_callback_url: record.deployment_callback_url,
+    workflow_run: workflowRun
+      ? {
+          keys: Object.keys(workflowRun),
+          id: workflowRun.id,
+        }
+      : null,
+    deployment: deployment
+      ? {
+          keys: Object.keys(deployment),
+          id: deployment.id,
+        }
+      : null,
   };
 }
 
@@ -145,10 +218,17 @@ function parseRequestedDeploymentProtection(
     });
   }
 
-  const runId = parsePositiveInteger(requestedPayload.workflow_run?.id);
+  const runId =
+    parsePositiveInteger(requestedPayload.workflow_run?.id) ??
+    (typeof requestedPayload.deployment_callback_url === "string"
+      ? parseRunIdFromDeploymentCallbackUrl(
+          requestedPayload.deployment_callback_url,
+        )
+      : null);
   if (!runId) {
     return appError(ErrorCode.DeploymentProtectionPayloadInvalid, {
-      message: "deployment protection payload is missing workflow_run.id",
+      message:
+        "deployment protection payload is missing workflow_run.id and deployment_callback_url run id",
     });
   }
 
@@ -253,20 +333,30 @@ async function fetchWorkflowJobs(
   requested: RequestedDeploymentProtection,
 ): Promise<WorkflowJobSummary[] | AppError> {
   try {
-    const jobs = await octokit.paginate(
-      "GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs",
-      {
-        owner: requested.owner,
-        repo: requested.repo,
-        run_id: requested.runId,
-        per_page: 100,
-      },
-      (response) =>
-        response.data.jobs.map((job) => ({
-          name: job.name,
-          conclusion: job.conclusion,
-        })),
-    );
+    const jobs: WorkflowJobSummary[] = [];
+
+    for (let page = 1; ; page += 1) {
+      const response = await octokit.request(
+        "GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs",
+        {
+          owner: requested.owner,
+          repo: requested.repo,
+          run_id: requested.runId,
+          per_page: 100,
+          page,
+        },
+      );
+
+      const pageJobs = response.data.jobs.map((job) => ({
+        name: job.name,
+        conclusion: job.conclusion,
+      }));
+      jobs.push(...pageJobs);
+
+      if (pageJobs.length < 100) {
+        break;
+      }
+    }
 
     return jobs;
   } catch (error) {
@@ -346,6 +436,11 @@ export async function handleGitHubWebhook(
 
   const requested = parseRequestedDeploymentProtection(payload);
   if (isAppError(requested)) {
+    console.error(
+      "invalid deployment protection payload",
+      requested,
+      summarizeDeploymentProtectionPayload(payload),
+    );
     return toResponse(requested);
   }
 

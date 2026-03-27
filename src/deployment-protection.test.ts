@@ -4,6 +4,7 @@ import test from "node:test";
 import type { DeploymentProtectionConfig } from "./config";
 import {
   evaluateReleaseProtection,
+  parseRunIdFromDeploymentCallbackUrl,
   type WorkflowJobSummary,
 } from "./deployment-protection";
 
@@ -15,6 +16,14 @@ const config: DeploymentProtectionConfig = {
   releaseGateJobName: "release-gate",
   releaseWorkflowPath: ".github/workflows/release.yml",
 };
+
+test("parseRunIdFromDeploymentCallbackUrl extracts the workflow run id", () => {
+  const runId = parseRunIdFromDeploymentCallbackUrl(
+    "https://api.github.com/repos/zaniebot/release-authenticator-example/actions/runs/23624826112/deployment_protection_rule",
+  );
+
+  assert.equal(runId, 23624826112);
+});
 
 test("evaluateReleaseProtection approves a run after the gate job succeeds", () => {
   const jobs: WorkflowJobSummary[] = [
